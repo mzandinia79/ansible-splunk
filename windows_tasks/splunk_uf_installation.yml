@@ -6,7 +6,7 @@
     splunkuser: admin
     splunkpasswd: 123456
     deploymentserver: 192.168.1.1:8089
-   
+
   tasks:
   - name: Find whether Splunk is installed or not?
     win_stat:
