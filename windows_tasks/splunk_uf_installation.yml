@@ -1,0 +1,133 @@
+---
+- hosts: windows
+  gather_facts: no
+  vars:
+    splunkdesiredversion: 8.0.3
+    splunkuser: admin
+    splunkpasswd: 123456
+    deploymentserver: 192.168.1.1:8089
+   
+  tasks:
+  - name: Find whether Splunk is installed or not?
+    win_stat:
+      path: C:\\Program Files\\SplunkUniversalForwarder\\bin\\splunk.exe
+    register: findsplunk
+
+  - name: Read splunk.version file from windows servers
+    slurp:
+      src: C:\\Program Files\\SplunkUniversalForwarder\\etc\\splunk.version
+    register: splunkversion
+    when: findsplunk.stat.exists == true
+    ignore_errors: true
+
+  - name: Set splunk version fact if installs
+    set_fact:
+      splunk_version: "{{ splunkversion['content'] | b64decode | regex_findall('(?<=VERSION\\=).*?(?=\\r)') }}"
+    when: findsplunk.stat.exists == true
+
+  - name: Set splunk version fact if not installs
+    set_fact:
+      splunk_installed: 0
+    when: findsplunk.stat.exists == false
+
+  - name: Set splunk version fact if correct version installed
+    set_fact:
+      splunk_installed: 1
+    when: findsplunk.stat.exists == true and splunk_version[0] == splunkdesiredversion
+   
+  - name: Message Splunk version
+    debug:
+      msg: "Splunk version is {{splunk_version[0]}} and it must be change with correct version"
+    when: findsplunk.stat.exists == true
+    ignore_errors: true
+
+  - debug:
+      msg: "splunk version is {{splunk_version[0]}} and you do nothing!"
+    when: splunk_installed is defined and splunk_installed == 1
+    ignore_errors: true
+
+  - debug:
+      msg: "Splunk is not installed, so we're going to install it"
+    when: splunk_installed is defined and splunk_installed == 0
+    ignore_errors: true
+
+  - name: Stop Splunk UF service
+    win_command: splunk stop
+    args:
+      chdir: "C:\\Program Files\\SplunkUniversalForwarder\\bin"
+    become: yes
+    become_method: runas
+    become_user: Administrator
+    when: findsplunk.stat.exists == true and splunk_version[0] != splunkdesiredversion
+    register: splunkstatus
+    ignore_errors: yes
+
+  - name: Uninstall Splunk UF
+    win_command: wmic.exe
+    args:
+      stdin: product where name="UniversalForwarder" call uninstall /nointeractive
+    become: yes
+    become_method: runas
+    become_user: Administrator
+    when: findsplunk.stat.exists == true and splunk_version[0] != splunkdesiredversion
+    register: uninstallsplunk
+    ignore_errors: yes
+
+  - name: Find whether Splunk folder is present or not
+    win_stat:
+      path: C:\\Program Files\\SplunkUniversalForwarder
+    register: splunkfolder
+    when: (splunk_version is defined and splunk_version[0] != splunkdesiredversion) or splunk_installed == 0
+
+  - name: Delete Splunk Directory
+    win_file:
+      path: C:\\Program Files\\SplunkUniversalForwarder
+      state: absent
+    register: deletefolder
+    when: (splunk_version is defined and splunk_version[0] != splunkdesiredversion) or splunk_installed == 0
+    ignore_errors: yes
+
+  - name: Copy Splunk UF on host
+    win_copy:
+      src: files/splunkforwarder-8.0.3-x64.msi
+      dest: C:\Users\splunk\Documents\splunkforwarder-8.0.3-x64.msi
+      force: no
+    become: yes
+    become_method: runas
+    become_user: Administrator
+    when: (splunk_version is defined and splunk_version[0] != splunkdesiredversion) or splunk_installed == 0
+    register: copyresult
+
+  - name: Install Splunk UF
+    win_package:
+      path: C:\Users\splunk\Documents\splunkforwarder-8.0.3-x64.msi
+      arguments: DEPLOYMENT_SERVER="{{deploymentserver}}" SPLUNKUSERNAME={{splunkuser}} SPLUNKPASSWORD={{splunkpasswd}} SERVICESTARTTYPE=auto LAUNCHSPLUNK=1 AGREETOLICENSE=Yes /quiet
+      state: present
+    become: yes
+    become_method: runas
+    become_user: Administrator
+    register: finalresult
+    when: (splunk_version is defined and splunk_version[0] != splunkdesiredversion) or splunk_installed == 0
+
+  - name: Check Splunk service status
+    win_command: splunk status
+    args:
+      chdir: "C:\\Program Files\\SplunkUniversalForwarder\\bin"
+    become: yes
+    become_method: runas
+    become_user: Administrator
+    register: splunkstatus
+    ignore_errors: yes
+
+  - name: Splunk status
+    debug:
+      msg: "{{splunkstatus.stdout_lines}}"
+
+  - name: Delete Splunk UF on host
+    win_file:
+      path: C:\Users\splunk\Documents\splunkforwarder-8.0.3-x64.msi
+    become: yes
+    become_method: runas
+    become_user: Administrator
+    ignore_errors: yes
+...    
