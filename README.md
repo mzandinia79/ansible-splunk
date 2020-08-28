@@ -6,12 +6,12 @@ You have to set some variables to use this playbook. Follow these steps
 ## Steps
 
 ### 1. set the version that you want to install
-example : 
-splunkdesiredversion: 8.0.3
+example :\
+splunkdesiredversion: 8.0.3\
 Note: you must just set the version you want without any quotation
 
 ### 2. set the splunk user name 
-splunkuser: admin
+splunkuser: admin\
 It usually is admin
 
 ### 3. set the splunk password
